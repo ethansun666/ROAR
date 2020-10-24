@@ -12,7 +12,7 @@ from matplotlib import patches as patches
 import json
 
 def read_map():
-    f = open('easy_map_waypoints_pointcloud_v3.json') 
+    f = open('ROAR/kalman_filter/easy_map_waypoints_pointcloud_v3.json')
     data = json.load(f)
     a = []
     b = []
