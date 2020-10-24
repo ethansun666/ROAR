@@ -2,6 +2,7 @@ import logging
 import numpy as np
 import warnings
 from pathlib import Path
+
 from ROAR_Sim.configurations.configuration import Configuration as CarlaConfig
 from ROAR_Sim.carla_client.carla_runner import CarlaRunner
 from ROAR.agent_module.pure_pursuit_agent import PurePursuitAgent
@@ -19,9 +20,10 @@ def main():
                                npc_agent_class=PurePursuitAgent)
     try:
         my_vehicle = carla_runner.set_carla_world()
-        agent = GPDFloodFillAgent(vehicle=my_vehicle, agent_settings=agent_config)
+        # agent = GPDFloodFillAgent(vehicle=my_vehicle, agent_settings=agent_config)
+        agent = PurePursuitAgent(vehicle=my_vehicle, agent_settings=agent_config)
 
-        carla_runner.start_game_loop(agent=agent, use_manual_control=True)
+        carla_runner.start_game_loop(agent=agent, use_manual_control=False)
     except Exception as e:
         logging.error(f"Something bad happened during initialization: {e}")
         carla_runner.on_finish()
