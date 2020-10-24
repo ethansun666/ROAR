@@ -45,6 +45,8 @@ def plot_track(KF):
     ax.set_xlim(-30,30)
     ax.set_ylim(40,90)
 
+    plt.show()
+
 
 def main():
     # sampling time / step size
