@@ -10,6 +10,9 @@ from ROAR.planning_module.behavior_planner.behavior_planner import \
 from ROAR.planning_module.local_planner.simple_waypoint_following_local_planner import \
     SimpleWaypointFollowingLocalPlanner
 from ROAR.configurations.configuration import Configuration as AgentConfig
+from ROAR.kalman_filter.KalmanFilter import Kalman_Filter
+import numpy as np
+import time
 
 
 class PurePursuitAgent(Agent):
@@ -32,8 +35,29 @@ class PurePursuitAgent(Agent):
             behavior_planner=self.behavior_planner,
             closeness_threshold=3)
 
+        initial_state = np.array([8.7, 53.3, 0, 0])
+        delta_T = 0.5
+        self.kalman_filter = Kalman_Filter(initial_state,delta_T)
+
     def run_step(self, sensors_data: SensorsData,
                  vehicle: Vehicle) -> VehicleControl:
         super(PurePursuitAgent, self).run_step(sensors_data=sensors_data,
                                                vehicle=vehicle)
-        return self.local_planner.run_in_series()
+
+        control = self.local_planner.run_in_series()
+        start = time.time()
+        print(self.kalman_filter.current_state)
+
+        self.kalman_filter.update([self.vehicle.transform.location.x,self.vehicle.transform.location.y,self.vehicle.velocity.x,vehicle.velocity.y],[control.steering, control.throttle])
+        prediction_time = 4
+        future_states = self.kalman_filter.predict_plot_future(prediction_time, plot=False)
+        safe_states, predicted_collision_time =self.kalman_filter.find_collision_state(future_states)
+        THRESHOLD_COLLISION_TIME = 1.5
+        end = time.time()
+        # print('time: '+str(1/(end - start)))
+
+        if predicted_collision_time is not None and predicted_collision_time <= THRESHOLD_COLLISION_TIME:
+            print('Braking Vehicle')
+            return VehicleControl()
+        else:
+            return control
