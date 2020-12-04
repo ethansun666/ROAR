@@ -18,26 +18,25 @@ def main():
     delta_T = 0.1
     
     #Initial states (x_position,y_position,x_velocity,y_velocity)
-    initial_state = np.array([8.7,53.3,5,np.pi/2])
+    initial_state = np.array([8.7,153.10,3,np.pi/2])
     
     # Initialize a kalman filter instance
     KF = Kalman_Filter(initial_state,delta_T)
     
     # Steering angle of front wheel
-    steering = np.pi/100
-    
+    steering = np.pi/18
+
     # 'Throttle' acceleration units in m/s^2
     longitudinal_acceleration = 0
 
     KF.current_inputs = [longitudinal_acceleration,steering]
 
-    prediction_time = 6
+    prediction_time = 15
     future_states = KF.predict_plot_future(prediction_time, plot = False)
     safe_states,collision_time = KF.find_collision_state(future_states)
     print('Collision Time : ' + str(collision_time))
 
     KF.plot_track(safe_states)
-
 
     # update in real time
     # for i in range(0,10):

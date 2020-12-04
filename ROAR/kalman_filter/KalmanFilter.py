@@ -8,7 +8,9 @@ Created on Thu Oct 10 12:12:46 2020
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import patches as patches
-from filterpy.kalman import ExtendedKalmanFilter
+from ROAR.utilities_module.occupancy_map import OccupancyGridMap
+from ROAR.utilities_module.data_structures_models import Location
+from scipy import interpolate
 import json
 import time
 
@@ -28,6 +30,7 @@ class Kalman_Filter:
     PREDICTION_TIME : float
     Lf : float
     Lr : float
+    occu_map : OccupancyGridMap
 
     
     def __init__(self,initial_state,delta_T):
@@ -39,7 +42,8 @@ class Kalman_Filter:
         self.COLLISION_THRESHOLD_DIS = 5
         self.Lf = 1.7
         self.Lr = 1.7
-        self.map = self.__read_map()
+        self.occu_map,a,b = self.__read_map()
+        self.occu_map.visualize()
 
         
     def predict_one_step(self,state,inputs):
@@ -88,27 +92,20 @@ class Kalman_Filter:
 
     def find_collision_state(self,states):
         start = time.time()
-        left, right = self.map[0],self.map[1]
         collision = False
         safe_states = []
         for state in states:
-            pos = [state[0], state[1]]
-            for a in left:
-                if self.__euclidean_dis(a, pos) <= self.COLLISION_THRESHOLD_DIS:
-                    # print('Collision Detected! Distance : ' + str(self.__euclidean_dis(a, pos)))
-                    collision = True
-                    break
-            for b in right:
-                if self.__euclidean_dis(b, pos) <= self.COLLISION_THRESHOLD_DIS:
-                    # print('Collision Detected! Distance : ' + str(self.__euclidean_dis(b, pos)))
-                    collision = True
-                    break
+            pos = Location(x=state[0], y=state[1], z=0)
+            map_coord = self.occu_map.location_to_occu_cord(pos)
+            # print(self.occu_map.map[map_coord[0,0],map_coord[0,1]])
+            if self.occu_map.map[map_coord[0,0],map_coord[0,1]] == 1:
+                collision = True
             if collision:
                 break
             safe_states.append(state)
         safe_states = np.asarray(safe_states)
         if collision:
-            collision_time = len(safe_states) * 0.1
+            collision_time = len(safe_states) * self.delta_T
         else:
             collision_time = None
         end = time.time()
@@ -143,15 +140,77 @@ class Kalman_Filter:
             if point[0] < 600 and point[0] > -600 and point[1] < 600 and point[1] > -600:
                 b_filtered.append(point)
         b_filtered = np.asarray(b_filtered)
-        return a, b_filtered
+        # f_a = interpolate.interp1d(a[:,0], a[:,1])
+        # x_a = np.arange(-500, 500, 0.1)
+        # y_a = f_a(x_a)
+        # a_new = [x_a,y_a]
+
+        clustered_a = []
+        cluster = []
+        for i in range(0,len(a)-1):
+            if self.__euclidean_dis(a[i],a[i+1]) < 3:
+                cluster.append(a[i])
+            elif len(cluster) != 0:
+                cluster = np.asarray(cluster)
+                x_mean = np.mean(cluster[:,0])
+                y_mean = np.mean(cluster[:,1])
+                clustered_a.append([x_mean,y_mean])
+                cluster = []
+        clustered_a = np.asarray(clustered_a)
+
+        clustered_b = []
+        cluster = []
+        for i in range(0,len(b_filtered)-1):
+            if self.__euclidean_dis(b_filtered[i],b_filtered[i+1]) < 3:
+                cluster.append(b_filtered[i])
+            elif len(cluster) != 0:
+                cluster = np.asarray(cluster)
+                x_mean = np.mean(cluster[:,0])
+                y_mean = np.mean(cluster[:,1])
+                clustered_b.append([x_mean,y_mean])
+                cluster = []
+        clustered_b = np.asarray(clustered_b)
+
+        interpolated_a_x = []
+        interpolated_a_y = []
+        for i in range(0,len(clustered_a)-1):
+            f = interpolate.interp1d(clustered_a[i:i+2,0], clustered_a[i:i+2,1])
+            if clustered_a[i,0] < clustered_a[i+1,0]:
+                x_a = np.arange(clustered_a[i,0], clustered_a[i+1,0], 0.1)
+            else:
+                x_a = np.arange(clustered_a[i+1,0], clustered_a[i,0], 0.1)
+            y_a = f(x_a)
+            interpolated_a_x = np.concatenate((interpolated_a_x,x_a))
+            interpolated_a_y = np.concatenate((interpolated_a_y,y_a))
+        interpolated_a =  np.array([interpolated_a_x,interpolated_a_y]).T
+
+        interpolated_b_x = []
+        interpolated_b_y = []
+        for i in range(0,len(clustered_b)-1):
+            f = interpolate.interp1d(clustered_b[i:i+2,0], clustered_b[i:i+2,1])
+            if clustered_b[i,0] < clustered_b[i+1,0]:
+                x_b = np.arange(clustered_b[i,0], clustered_b[i+1,0], 0.1)
+            else:
+                x_b = np.arange(clustered_b[i+1,0], clustered_b[i,0], 0.1)
+            y_b = f(x_b)
+            interpolated_b_x = np.concatenate((interpolated_b_x,x_b))
+            interpolated_b_y = np.concatenate((interpolated_b_y,y_b))
+        interpolated_b =  np.array([interpolated_b_x,interpolated_b_y]).T
+
+
+        MAX_MAP_SIZE = 800
+        occu_map = OccupancyGridMap(MAX_MAP_SIZE)
+        occu_map.update_grid_map_from_world_cord(interpolated_a)
+        occu_map.update_grid_map_from_world_cord(interpolated_b)
+        return occu_map,interpolated_a,interpolated_b
 
     def plot_track(self,states):
-        a, b = self.__read_map()
+        temp_map, a, b = self.__read_map()
 
         fig, ax = self.__plot_path(states)
 
-        ax.scatter(a[:, 0], a[:, 1])
-        ax.scatter(b[:, 0], b[:, 1])
+        ax.scatter(a[:, 0], -a[:, 1])
+        ax.scatter(b[:, 0], -b[:, 1])
 
         ax.set_xlim(states[0, 0] - 15, states[0, 0] + 15)
         ax.set_ylim(states[0, 1] - 45, states[0, 1] + 45)
@@ -197,7 +256,6 @@ class Kalman_Filter:
         ax.add_patch(rect_final)
         plt.axis('equal')
         return fig,ax
-    
 
 
     

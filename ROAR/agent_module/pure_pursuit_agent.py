@@ -35,9 +35,12 @@ class PurePursuitAgent(Agent):
             behavior_planner=self.behavior_planner,
             closeness_threshold=3)
 
-        initial_state = np.array([8.7, 53.3, 0, 0])
+        initial_state = np.array([8.7, 53.3, 0, np.pi/2])
         delta_T = 0.5
         self.kalman_filter = Kalman_Filter(initial_state,delta_T)
+        self.previous_speed = 0
+        self.previous_time = 0
+        self.MAX_STEERING_ANGLE = 0.7854
 
     def run_step(self, sensors_data: SensorsData,
                  vehicle: Vehicle) -> VehicleControl:
@@ -45,14 +48,20 @@ class PurePursuitAgent(Agent):
                                                vehicle=vehicle)
 
         control = self.local_planner.run_in_series()
-        start = time.time()
+        current_time = time.time()
         print(self.kalman_filter.current_state)
 
-        self.kalman_filter.update([self.vehicle.transform.location.x,self.vehicle.transform.location.y,self.vehicle.velocity.x,vehicle.velocity.y],[control.steering, control.throttle])
+        current_speed = self.vehicle.get_speed(self.vehicle)/3.6
+        current_acceleration = (current_speed-self.previous_speed)/(current_time-self.previous_time)
+        heading_angle = -self.vehicle.transform.rotation.yaw * np.pi * 2 / 360
+        self.kalman_filter.update([self.vehicle.transform.location.x,self.vehicle.transform.location.y,current_speed,heading_angle],[current_acceleration, self.MAX_STEERING_ANGLE*control.steering])
         prediction_time = 4
         future_states = self.kalman_filter.predict_plot_future(prediction_time, plot=False)
         safe_states, predicted_collision_time =self.kalman_filter.find_collision_state(future_states)
         THRESHOLD_COLLISION_TIME = 1.5
+        self.previous_speed = current_speed
+        self.previous_time = current_time
+
         end = time.time()
         # print('time: '+str(1/(end - start)))
 
